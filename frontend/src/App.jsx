@@ -67,7 +67,7 @@ function App() {
         .map((technology) => technology.trim())
         .filter(Boolean)
 
-      const payload = {
+      const salaryPayload = {
         country: formData.country,
         education_level: formData.education_level,
         years_code: formData.years_code,
@@ -75,7 +75,14 @@ function App() {
         technologies,
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/salary/predict`, {
+      const skillPayload = {
+        country: formData.country,
+        education_level: formData.education_level,
+        years_code_pro: formData.years_code_pro,
+        technologies,
+      }
+
+      const requestOptions = (payload) => ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -83,13 +90,34 @@ function App() {
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json()
+      const [salaryResponse, skillResponse] = await Promise.all([
+        fetch(
+          `${API_BASE_URL}/api/v1/salary/predict`,
+          requestOptions(salaryPayload),
+        ),
+        fetch(
+          `${API_BASE_URL}/api/v1/skills/analyze`,
+          requestOptions(skillPayload),
+        ),
+      ])
 
-      if (!response.ok) {
-        throw new Error(getApiErrorMessage(data))
+      const [salaryData, skillData] = await Promise.all([
+        salaryResponse.json(),
+        skillResponse.json(),
+      ])
+
+      if (!salaryResponse.ok) {
+        throw new Error(getApiErrorMessage(salaryData))
       }
 
-      setResult(data)
+      if (!skillResponse.ok) {
+        throw new Error(getApiErrorMessage(skillData))
+      }
+
+      setResult({
+        salary: salaryData,
+        skill: skillData,
+      })
       setSubmittedProfile({
         country: formData.country,
         educationLevel: formData.education_level,
@@ -110,19 +138,54 @@ function App() {
     }
   }
 
-  const hasRange = result && result.upper_salary > result.lower_salary
+  const hasRange =
+    result && result.salary.upper_salary > result.salary.lower_salary
 
   const rangePosition = hasRange
     ? Math.min(
         100,
         Math.max(
           0,
-          ((result.predicted_salary - result.lower_salary) /
-            (result.upper_salary - result.lower_salary)) *
+          ((result.salary.predicted_salary - result.salary.lower_salary) /
+            (result.salary.upper_salary - result.salary.lower_salary)) *
             100,
         ),
       )
     : 50
+
+  const skillScaleMaximum = result
+    ? Math.max(
+        result.skill.upper_benchmark,
+        result.skill.actual_skills,
+        result.skill.expected_skills,
+      ) + 3
+    : 1
+
+  const skillMarkerPosition = result
+    ? Math.min(100, (result.skill.actual_skills / skillScaleMaximum) * 100)
+    : 0
+
+  const skillBandStart = result
+    ? (result.skill.lower_benchmark / skillScaleMaximum) * 100
+    : 0
+
+  const skillBandWidth = result
+    ? ((result.skill.upper_benchmark - result.skill.lower_benchmark) /
+        skillScaleMaximum) *
+      100
+    : 0
+
+  const skillPositionLabels = {
+    below_benchmark: 'Below the typical range',
+    within_benchmark: 'Within the typical range',
+    above_benchmark: 'Above the typical range',
+  }
+
+  const benchmarkLevelLabels = {
+    country_education_experience: 'country, education and experience',
+    education_experience: 'education and experience',
+    experience: 'experience',
+  }
 
   return (
     <div className="app-shell">
@@ -306,8 +369,8 @@ function App() {
             </button>
 
             <p className="form-footnote">
-              Salary intelligence is live. Skill and mentoring layers are the
-              next model integrations.
+              Salary and skill intelligence are live. Recommendations and the
+              AI mentor are the next integrations.
             </p>
           </form>
 
@@ -325,7 +388,7 @@ function App() {
                 <div className="loading-state" role="status">
                   <span className="loading-ring" aria-hidden="true" />
                   <h3>Building your career snapshot</h3>
-                  <p>Transforming your profile and running the salary model…</p>
+                  <p>Running the salary model and matching your peer cohort…</p>
                 </div>
               )}
 
@@ -351,8 +414,8 @@ function App() {
                   <p className="empty-state__label">Your career, in context</p>
                   <h3>Your complete career map will live here.</h3>
                   <p>
-                    Start with the live salary model. Every new intelligence
-                    layer will join the same report without changing your flow.
+                    Start with live salary and skill benchmarks. Every new
+                    intelligence layer will join the same report.
                   </p>
                   <div className="output-preview" aria-hidden="true">
                     <span>Salary range</span>
@@ -367,12 +430,15 @@ function App() {
                 <div className="career-result">
                   <div className="analysis-progress">
                     <span>Analysis coverage</span>
-                    <strong>1 of 4 layers live</strong>
+                    <strong>2 of 4 layers live</strong>
                   </div>
 
                   <p className="result-kicker">Market compensation signal</p>
                   <p className="salary-value">
-                    {formatCurrency(result.predicted_salary, result.currency)}
+                    {formatCurrency(
+                      result.salary.predicted_salary,
+                      result.salary.currency,
+                    )}
                   </p>
                   <p className="salary-context">
                     estimated annually for a{' '}
@@ -384,8 +450,15 @@ function App() {
                     <div className="range-panel__header">
                       <span>Model prediction range</span>
                       <strong>
-                        {formatCurrency(result.lower_salary, result.currency)} –{' '}
-                        {formatCurrency(result.upper_salary, result.currency)}
+                        {formatCurrency(
+                          result.salary.lower_salary,
+                          result.salary.currency,
+                        )}{' '}
+                        –{' '}
+                        {formatCurrency(
+                          result.salary.upper_salary,
+                          result.salary.currency,
+                        )}
                       </strong>
                     </div>
                     <div className="range-track" aria-hidden="true">
@@ -401,27 +474,82 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="result-metrics">
-                    <div>
-                      <span>Technology breadth</span>
-                      <strong>{submittedProfile?.technologyCount} listed</strong>
+                  <section
+                    className="skill-benchmark-panel"
+                    aria-labelledby="skill-benchmark-title"
+                  >
+                    <div className="skill-benchmark-heading">
+                      <div>
+                        <p className="result-kicker">Peer skill benchmark</p>
+                        <h3 id="skill-benchmark-title">
+                          {skillPositionLabels[result.skill.position]}
+                        </h3>
+                      </div>
+                      <span className="live-pill">Live</span>
                     </div>
+
+                    <div className="skill-score-grid">
+                      <div>
+                        <span>Your technologies</span>
+                        <strong>{result.skill.actual_skills}</strong>
+                      </div>
+                      <div>
+                        <span>Peer median</span>
+                        <strong>{result.skill.expected_skills}</strong>
+                      </div>
+                      <div className="skill-gap-score">
+                        <span>Skill gap</span>
+                        <strong>{result.skill.skill_gap}</strong>
+                      </div>
+                    </div>
+
+                    <div className="skill-range">
+                      <div className="skill-range__track" aria-hidden="true">
+                        <span
+                          className="skill-range__typical"
+                          style={{
+                            left: `${skillBandStart}%`,
+                            width: `${skillBandWidth}%`,
+                          }}
+                        />
+                        <span
+                          className="skill-range__marker"
+                          style={{ left: `${skillMarkerPosition}%` }}
+                        />
+                      </div>
+                      <div className="skill-range__labels">
+                        <span>Your position: {result.skill.actual_skills}</span>
+                        <span>
+                          Typical: {result.skill.lower_benchmark}–
+                          {result.skill.upper_benchmark}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="cohort-context">
+                      Compared with {result.skill.cohort_size.toLocaleString('en-US')}{' '}
+                      employed developers matched by{' '}
+                      {benchmarkLevelLabels[result.skill.benchmark_level]}.
+                    </p>
+                  </section>
+
+                  <div className="result-meta-grid">
                     <div>
                       <span>Learning capacity</span>
                       <strong>{submittedProfile?.learningHours} h / week</strong>
                     </div>
                     <div>
                       <span>Salary model</span>
-                      <strong>v{result.model_version}</strong>
+                      <strong>v{result.salary.model_version}</strong>
+                    </div>
+                    <div>
+                      <span>Benchmark</span>
+                      <strong>v{result.skill.benchmark_version}</strong>
                     </div>
                   </div>
 
                   <div className="module-queue">
                     <p>Next intelligence layers</p>
-                    <div>
-                      <span>Skill benchmark</span>
-                      <small>Model connection pending</small>
-                    </div>
                     <div>
                       <span>Technology recommendations</span>
                       <small>Recommendation engine pending</small>
@@ -435,9 +563,9 @@ function App() {
                   <div className="model-note">
                     <span aria-hidden="true">i</span>
                     <p>
-                      Model v1 measures technology breadth, not the value of each
-                      named technology. This is a survey-based estimate, not a
-                      live market quote or job offer.
+                      Salary is a survey-based estimate, not a job offer. The
+                      skill gap compares technology count with a peer-group
+                      median; it is not a universal industry requirement.
                     </p>
                   </div>
                 </div>
@@ -475,10 +603,10 @@ function App() {
               </div>
             </article>
 
-            <article className="module-card">
+            <article className="module-card module-card--active module-card--skill">
               <div className="module-card__top">
                 <span className="module-number">02</span>
-                <span className="status">Next</span>
+                <span className="status status--live">Live</span>
               </div>
               <h3>Skill benchmark</h3>
               <p>

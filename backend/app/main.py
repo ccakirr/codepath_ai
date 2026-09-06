@@ -1,6 +1,9 @@
-from .api.routes.salary import router as salary_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
+
+from .api.routes.salary import router as salary_router
+from .api.routes.skill import router as skill_router
+
 
 app = FastAPI(
     title="CodePath AI API",
@@ -21,6 +24,11 @@ app.add_middleware(
 app.include_router(
     salary_router, 
     prefix="/api/v1",
+)
+
+app.include_router(
+    skill_router,
+    prefix="/api/v1"
 )
 
 @app.get("/health")

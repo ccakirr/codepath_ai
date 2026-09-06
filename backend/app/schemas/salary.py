@@ -24,6 +24,7 @@ class SalaryPredictionRequest(BaseModel):
 
         return self
 
+
 class SalaryPredictionResponse(BaseModel):
     predicted_salary: float
     lower_salary: float
