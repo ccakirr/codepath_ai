@@ -16,3 +16,10 @@ SKILL_BENCHMARK_PATH = (
     / "skills"
     / "skill_benchmark_bundle_v1.joblib"
 )
+
+TECHNOLOGY_RECOMMENDER_PATH = (
+    PROJECT_ROOT
+    / "artifacts"
+    / "recommender"
+    / "technology_recommender_bundle_v1.joblib"
+)

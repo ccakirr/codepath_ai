@@ -4,3 +4,4 @@ fastapi
 numpy
 joblib
 pydantic
+httpx

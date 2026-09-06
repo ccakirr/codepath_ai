@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from .api.routes.salary import router as salary_router
 from .api.routes.skill import router as skill_router
+from .api.routes.recommender import router as recommender_router
 
 
 app = FastAPI(
@@ -28,6 +29,11 @@ app.include_router(
 
 app.include_router(
     skill_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    recommender_router,
     prefix="/api/v1"
 )
 

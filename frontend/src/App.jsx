@@ -82,6 +82,11 @@ function App() {
         technologies,
       }
 
+      const recommendationPayload = {
+        technologies,
+        top_n: 5,
+      }
+
       const requestOptions = (payload) => ({
         method: 'POST',
         headers: {
@@ -90,7 +95,8 @@ function App() {
         body: JSON.stringify(payload),
       })
 
-      const [salaryResponse, skillResponse] = await Promise.all([
+      const [salaryResponse, skillResponse, recommendationResponse] =
+        await Promise.all([
         fetch(
           `${API_BASE_URL}/api/v1/salary/predict`,
           requestOptions(salaryPayload),
@@ -99,11 +105,16 @@ function App() {
           `${API_BASE_URL}/api/v1/skills/analyze`,
           requestOptions(skillPayload),
         ),
+        fetch(
+          `${API_BASE_URL}/api/v1/recommendations/technologies`,
+          requestOptions(recommendationPayload),
+        ),
       ])
 
-      const [salaryData, skillData] = await Promise.all([
+      const [salaryData, skillData, recommendationData] = await Promise.all([
         salaryResponse.json(),
         skillResponse.json(),
+        recommendationResponse.json(),
       ])
 
       if (!salaryResponse.ok) {
@@ -114,9 +125,14 @@ function App() {
         throw new Error(getApiErrorMessage(skillData))
       }
 
+      if (!recommendationResponse.ok) {
+        throw new Error(getApiErrorMessage(recommendationData))
+      }
+
       setResult({
         salary: salaryData,
         skill: skillData,
+        recommendation: recommendationData,
       })
       setSubmittedProfile({
         country: formData.country,
@@ -186,6 +202,16 @@ function App() {
     education_experience: 'education and experience',
     experience: 'experience',
   }
+
+  const recommendationLimit = result
+    ? result.skill.skill_gap > 0
+      ? Math.min(result.skill.skill_gap, 5)
+      : 3
+    : 0
+
+  const displayedRecommendations = result
+    ? result.recommendation.recommendations.slice(0, recommendationLimit)
+    : []
 
   return (
     <div className="app-shell">
@@ -369,8 +395,8 @@ function App() {
             </button>
 
             <p className="form-footnote">
-              Salary and skill intelligence are live. Recommendations and the
-              AI mentor are the next integrations.
+              Salary, skill and technology intelligence are live. The AI mentor
+              is the final integration.
             </p>
           </form>
 
@@ -388,7 +414,10 @@ function App() {
                 <div className="loading-state" role="status">
                   <span className="loading-ring" aria-hidden="true" />
                   <h3>Building your career snapshot</h3>
-                  <p>Running the salary model and matching your peer cohort…</p>
+                  <p>
+                    Running the salary model, matching your peer cohort and
+                    ranking complementary technologies…
+                  </p>
                 </div>
               )}
 
@@ -430,7 +459,7 @@ function App() {
                 <div className="career-result">
                   <div className="analysis-progress">
                     <span>Analysis coverage</span>
-                    <strong>2 of 4 layers live</strong>
+                    <strong>3 of 4 layers live</strong>
                   </div>
 
                   <p className="result-kicker">Market compensation signal</p>
@@ -533,6 +562,81 @@ function App() {
                     </p>
                   </section>
 
+                  <section
+                    className="recommendation-panel"
+                    aria-labelledby="recommendation-title"
+                  >
+                    <div className="recommendation-heading">
+                      <div>
+                        <p className="result-kicker">Data-backed next moves</p>
+                        <h3 id="recommendation-title">
+                          {result.skill.skill_gap > 0
+                            ? `Close your ${result.skill.skill_gap}-skill gap`
+                            : 'Extend an already strong toolkit'}
+                        </h3>
+                      </div>
+                      <span className="live-pill">Live</span>
+                    </div>
+
+                    <p className="recommendation-intro">
+                      Ranked by compatibility with your current stack and the
+                      salary signal observed among comparable developer
+                      profiles.
+                    </p>
+
+                    <div className="recommendation-list">
+                      {displayedRecommendations.map((recommendation, index) => (
+                        <article
+                          className="recommendation-item"
+                          key={recommendation.technology}
+                        >
+                          <span className="recommendation-rank">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <div className="recommendation-copy">
+                            <h4>{recommendation.technology}</h4>
+                            <div className="recommendation-signals">
+                              <span>
+                                Stack fit{' '}
+                                {Math.round(recommendation.similarity_score * 100)}%
+                              </span>
+                              <span>
+                                Salary signal{' '}
+                                {Math.round(recommendation.salary_score * 100)}th pct
+                              </span>
+                            </div>
+                            <div
+                              className="recommendation-track"
+                              aria-hidden="true"
+                            >
+                              <span
+                                style={{
+                                  width: `${Math.round(
+                                    recommendation.final_score * 100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="priority-score">
+                            <strong>
+                              {Math.round(recommendation.final_score * 100)}
+                            </strong>
+                            <span>priority</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+
+                    {result.recommendation.ignored_technologies.length > 0 && (
+                      <p className="ignored-technologies">
+                        Not scored because they are absent from the survey
+                        taxonomy:{' '}
+                        {result.recommendation.ignored_technologies.join(', ')}.
+                      </p>
+                    )}
+                  </section>
+
                   <div className="result-meta-grid">
                     <div>
                       <span>Learning capacity</span>
@@ -546,14 +650,14 @@ function App() {
                       <span>Benchmark</span>
                       <strong>v{result.skill.benchmark_version}</strong>
                     </div>
+                    <div>
+                      <span>Recommender</span>
+                      <strong>v{result.recommendation.model_version}</strong>
+                    </div>
                   </div>
 
                   <div className="module-queue">
-                    <p>Next intelligence layers</p>
-                    <div>
-                      <span>Technology recommendations</span>
-                      <small>Recommendation engine pending</small>
-                    </div>
+                    <p>Final intelligence layer</p>
                     <div>
                       <span>30/60/90-day career plan</span>
                       <small>AI mentor connection pending</small>
@@ -565,7 +669,8 @@ function App() {
                     <p>
                       Salary is a survey-based estimate, not a job offer. The
                       skill gap compares technology count with a peer-group
-                      median; it is not a universal industry requirement.
+                      median. Recommendations show associations in survey data,
+                      not proof that a technology causes higher pay.
                     </p>
                   </div>
                 </div>
@@ -619,10 +724,10 @@ function App() {
               </div>
             </article>
 
-            <article className="module-card">
+            <article className="module-card module-card--active module-card--recommendation">
               <div className="module-card__top">
                 <span className="module-number">03</span>
-                <span className="status">Planned</span>
+                <span className="status status--live">Live</span>
               </div>
               <h3>Technology recommender</h3>
               <p>
