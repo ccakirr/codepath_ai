@@ -15,6 +15,7 @@ if not SALARY_MODEL_PATH.is_file():
 
 salary_model_bundle = joblib.load(SALARY_MODEL_PATH)
 
+
 def predict_salary(
     request: SalaryPredictionRequest
 ) -> SalaryPredictionResponse:

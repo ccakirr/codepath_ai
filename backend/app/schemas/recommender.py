@@ -25,3 +25,9 @@ class TechnologyRecommendationResponse(BaseModel):
     ignored_technologies: list[str]
 
     model_version: str
+
+
+class TechnologyCatalogResponse(BaseModel):
+    technologies: list[str]
+    count: int
+    model_version: str

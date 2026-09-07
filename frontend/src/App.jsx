@@ -1,31 +1,270 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { translations } from './i18n'
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
-const formatCurrency = (value, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', {
+const localeByLanguage = {
+  en: 'en-US',
+  tr: 'tr-TR',
+}
+
+const formatCurrency = (value, currency = 'USD', language = 'en') =>
+  new Intl.NumberFormat(localeByLanguage[language], {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
   }).format(value)
 
-const getApiErrorMessage = (data) => {
+const getApiErrorMessage = (data, fallbackMessage) => {
   if (Array.isArray(data.detail)) {
     return data.detail.map((item) => item.msg).join(' ')
   }
 
-  return data.detail || 'Career analysis request failed.'
+  return data.detail || fallbackMessage
 }
 
+const normalizeTechnologyName = (value) =>
+  value.toLocaleLowerCase('en-US').replace(/[\s._/-]/g, '')
+
+const TechnologyCombobox = ({
+  options,
+  selectedTechnologies,
+  onChange,
+  loading,
+  loadError,
+  t,
+}) => {
+  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
+  const containerRef = useRef(null)
+
+  const filteredOptions = useMemo(() => {
+    const selectedNames = new Set(
+      selectedTechnologies.map((technology) => technology.toLowerCase()),
+    )
+    const normalizedQuery = normalizeTechnologyName(query)
+
+    return options.filter((technology) => {
+      const isAlreadySelected = selectedNames.has(technology.toLowerCase())
+      const matchesQuery = normalizeTechnologyName(technology).includes(
+        normalizedQuery,
+      )
+
+      return !isAlreadySelected && matchesQuery
+    })
+  }, [options, query, selectedTechnologies])
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+    }
+  }, [])
+
+  const addTechnology = (technology) => {
+    onChange([...selectedTechnologies, technology])
+    setQuery('')
+    setHighlightedIndex(0)
+  }
+
+  const removeTechnology = (technologyToRemove) => {
+    onChange(
+      selectedTechnologies.filter(
+        (technology) => technology !== technologyToRemove,
+      ),
+    )
+  }
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setIsOpen(true)
+      setHighlightedIndex((currentIndex) =>
+        Math.max(
+          0,
+          Math.min(currentIndex + 1, filteredOptions.length - 1),
+        ),
+      )
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setHighlightedIndex((currentIndex) => Math.max(currentIndex - 1, 0))
+    }
+
+    if (
+      event.key === 'Enter' &&
+      isOpen &&
+      filteredOptions[highlightedIndex]
+    ) {
+      event.preventDefault()
+      addTechnology(filteredOptions[highlightedIndex])
+    }
+
+    if (
+      event.key === 'Backspace' &&
+      query === '' &&
+      selectedTechnologies.length > 0
+    ) {
+      removeTechnology(selectedTechnologies.at(-1))
+    }
+
+    if (event.key === 'Escape') {
+      setIsOpen(false)
+    }
+  }
+
+  return (
+    <div className="technology-combobox" ref={containerRef}>
+      <div
+        className={`technology-combobox__control${isOpen ? ' is-open' : ''}`}
+        onClick={() => setIsOpen(true)}
+      >
+        <div className="technology-combobox__chips">
+          {selectedTechnologies.map((technology) => (
+            <span className="technology-chip" key={technology}>
+              {technology}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  removeTechnology(technology)
+                }}
+                aria-label={t.removeTechnology(technology)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <input
+            id="technologies"
+            className="technology-combobox__input"
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setHighlightedIndex(0)
+              setIsOpen(true)
+            }}
+            onFocus={() => setIsOpen(true)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              selectedTechnologies.length === 0
+                ? t.technologiesPlaceholder
+                : t.addTechnology
+            }
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen}
+            aria-controls="technology-options"
+            aria-describedby="technologies-help"
+            autoComplete="off"
+          />
+        </div>
+        <span className="technology-combobox__chevron" aria-hidden="true">
+          ⌄
+        </span>
+      </div>
+
+      <div className="technology-combobox__meta">
+        <small id="technologies-help">
+          {loadError || t.technologiesHelp}
+        </small>
+        {selectedTechnologies.length > 0 && (
+          <button type="button" onClick={() => onChange([])}>
+            {t.clearTechnologies}
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div
+          className="technology-combobox__menu"
+          id="technology-options"
+          role="listbox"
+          aria-label={t.availableTechnologies}
+        >
+          {loading && (
+            <p className="technology-combobox__empty">
+              {t.loadingTechnologies}
+            </p>
+          )}
+
+          {!loading && filteredOptions.length === 0 && (
+            <p className="technology-combobox__empty">
+              {loadError ? t.catalogUnavailable : t.noTechnologyResults}
+            </p>
+          )}
+
+          {!loading &&
+            filteredOptions.map((technology, index) => (
+              <button
+                className={`technology-combobox__option${
+                  index === highlightedIndex ? ' is-highlighted' : ''
+                }`}
+                type="button"
+                role="option"
+                aria-selected="false"
+                key={technology}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                onClick={() => addTechnology(technology)}
+              >
+                <span>{technology}</span>
+                <span aria-hidden="true">+</span>
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const RoadmapPhaseCard = ({ day, phase, t }) => (
+  <article className="roadmap-phase">
+    <div className="roadmap-phase__topline">
+      <span>{day}</span>
+      <span aria-hidden="true">&#8594;</span>
+    </div>
+    <h3>{phase.title}</h3>
+    <p className="roadmap-phase__objective">{phase.objective}</p>
+    <ol className="roadmap-actions">
+      {phase.actions.map((action) => (
+        <li key={action}>{action}</li>
+      ))}
+    </ol>
+    <div className="roadmap-deliverable">
+      <span>{t.deliverable}</span>
+      <p>{phase.deliverable}</p>
+    </div>
+  </article>
+)
+
 function App() {
+  const [language, setLanguage] = useState(() => {
+    const savedLanguage = window.localStorage.getItem('codepath-language')
+
+    if (savedLanguage === 'tr' || savedLanguage === 'en') {
+      return savedLanguage
+    }
+
+    return window.navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en'
+  })
   const [formData, setFormData] = useState({
     country: 'Turkey',
     education_level: 'Undergraduate',
     years_code: 4,
     years_code_pro: 1,
-    technologies: 'python, fastapi, scikit-learn, react, pandas',
+    technologies: ['Python', 'FastAPI', 'React.js', 'Docker'],
     current_salary: '',
     weekly_learning_hours: 8,
   })
@@ -33,6 +272,49 @@ function App() {
   const [submittedProfile, setSubmittedProfile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [technologyOptions, setTechnologyOptions] = useState([])
+  const [technologyCatalogLoading, setTechnologyCatalogLoading] = useState(true)
+  const [technologyCatalogError, setTechnologyCatalogError] = useState(false)
+  const t = translations[language]
+  const locale = localeByLanguage[language]
+
+  useEffect(() => {
+    window.localStorage.setItem('codepath-language', language)
+    document.documentElement.lang = language
+  }, [language])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadTechnologyCatalog = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/recommendations/catalog`,
+          { signal: controller.signal },
+        )
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error('Technology catalog could not be loaded.')
+        }
+
+        setTechnologyOptions(data.technologies)
+        setTechnologyCatalogError(false)
+      } catch (catalogError) {
+        if (catalogError.name !== 'AbortError') {
+          setTechnologyCatalogError(true)
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setTechnologyCatalogLoading(false)
+        }
+      }
+    }
+
+    loadTechnologyCatalog()
+
+    return () => controller.abort()
+  }, [])
 
   const handleChange = (event) => {
     const { name, value, type } = event.target
@@ -58,81 +340,53 @@ function App() {
     try {
       if (Number(formData.years_code_pro) > Number(formData.years_code)) {
         throw new Error(
-          'Professional experience cannot exceed total coding experience.',
+          t.experienceError,
         )
       }
 
       const technologies = formData.technologies
-        .split(',')
-        .map((technology) => technology.trim())
-        .filter(Boolean)
 
-      const salaryPayload = {
+      if (technologies.length === 0) {
+        throw new Error(t.technologyRequired)
+      }
+
+      const careerPayload = {
         country: formData.country,
         education_level: formData.education_level,
         years_code: formData.years_code,
         years_code_pro: formData.years_code_pro,
         technologies,
+        current_salary:
+          formData.current_salary === '' ? null : formData.current_salary,
+        weekly_learning_hours: formData.weekly_learning_hours,
+        language,
       }
 
-      const skillPayload = {
-        country: formData.country,
-        education_level: formData.education_level,
-        years_code_pro: formData.years_code_pro,
-        technologies,
-      }
-
-      const recommendationPayload = {
-        technologies,
-        top_n: 5,
-      }
-
-      const requestOptions = (payload) => ({
+      const careerResponse = await fetch(
+        `${API_BASE_URL}/api/v1/career/analyze`,
+        {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
-      })
+        body: JSON.stringify(careerPayload),
+        },
+      )
 
-      const [salaryResponse, skillResponse, recommendationResponse] =
-        await Promise.all([
-        fetch(
-          `${API_BASE_URL}/api/v1/salary/predict`,
-          requestOptions(salaryPayload),
-        ),
-        fetch(
-          `${API_BASE_URL}/api/v1/skills/analyze`,
-          requestOptions(skillPayload),
-        ),
-        fetch(
-          `${API_BASE_URL}/api/v1/recommendations/technologies`,
-          requestOptions(recommendationPayload),
-        ),
-      ])
+      const careerData = await careerResponse.json()
 
-      const [salaryData, skillData, recommendationData] = await Promise.all([
-        salaryResponse.json(),
-        skillResponse.json(),
-        recommendationResponse.json(),
-      ])
-
-      if (!salaryResponse.ok) {
-        throw new Error(getApiErrorMessage(salaryData))
-      }
-
-      if (!skillResponse.ok) {
-        throw new Error(getApiErrorMessage(skillData))
-      }
-
-      if (!recommendationResponse.ok) {
-        throw new Error(getApiErrorMessage(recommendationData))
+      if (!careerResponse.ok) {
+        throw new Error(getApiErrorMessage(careerData, t.apiError))
       }
 
       setResult({
-        salary: salaryData,
-        skill: skillData,
-        recommendation: recommendationData,
+        salary: careerData.salary,
+        skill: careerData.skills,
+        recommendation: careerData.recommendations,
+        mentorStatus: careerData.mentor_status,
+        mentorReport: careerData.mentor_report,
+        mentorMessage: careerData.mentor_message,
+        mentorModel: careerData.mentor_model,
       })
       setSubmittedProfile({
         country: formData.country,
@@ -145,7 +399,7 @@ function App() {
     } catch (requestError) {
       const message =
         requestError instanceof TypeError
-          ? 'Could not connect to the API. Make sure the FastAPI server is running on port 8000.'
+          ? t.connectionError
           : requestError.message
 
       setError(message)
@@ -191,100 +445,98 @@ function App() {
       100
     : 0
 
-  const skillPositionLabels = {
-    below_benchmark: 'Below the typical range',
-    within_benchmark: 'Within the typical range',
-    above_benchmark: 'Above the typical range',
-  }
-
-  const benchmarkLevelLabels = {
-    country_education_experience: 'country, education and experience',
-    education_experience: 'education and experience',
-    experience: 'experience',
-  }
-
-  const recommendationLimit = result
-    ? result.skill.skill_gap > 0
-      ? Math.min(result.skill.skill_gap, 5)
-      : 3
-    : 0
-
   const displayedRecommendations = result
-    ? result.recommendation.recommendations.slice(0, recommendationLimit)
+    ? result.recommendation.recommendations
     : []
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="CodePath AI home">
+        <a className="brand" href="#top" aria-label={t.homeLabel}>
           <span className="brand-mark" aria-hidden="true">
             CP
           </span>
           <span>
             <strong>CodePath AI</strong>
-            <small>Career intelligence</small>
+            <small>{t.brandSubtitle}</small>
           </span>
         </a>
 
-        <nav className="product-nav" aria-label="Main navigation">
-          <a href="#analysis">Analysis</a>
-          <a href="#career-modules">Intelligence layers</a>
-          <a href="#roadmap">Roadmap</a>
+        <nav className="product-nav" aria-label={t.navigationLabel}>
+          <a href="#analysis">{t.navAnalysis}</a>
+          <a href="#career-modules">{t.navLayers}</a>
+          <a href={result?.mentorReport ? '#mentor-report' : '#roadmap'}>
+            {t.navRoadmap}
+          </a>
         </nav>
 
-        <div className="model-badge">
-          <span className="model-badge__dot" aria-hidden="true" />
-          ML + AI mentor
+        <div className="topbar-actions">
+          <div className="language-switch" aria-label={t.languageLabel}>
+            <button
+              type="button"
+              className={language === 'tr' ? 'is-active' : ''}
+              onClick={() => setLanguage('tr')}
+              aria-pressed={language === 'tr'}
+            >
+              TR
+            </button>
+            <button
+              type="button"
+              className={language === 'en' ? 'is-active' : ''}
+              onClick={() => setLanguage('en')}
+              aria-pressed={language === 'en'}
+            >
+              EN
+            </button>
+          </div>
+          <div className="model-badge">
+            <span className="model-badge__dot" aria-hidden="true" />
+            {t.modelBadge}
+          </div>
         </div>
       </header>
 
       <main id="top">
         <section className="intro" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">Personal career intelligence</p>
-            <h1 id="page-title">
-              Know where you stand. See what to build next.
-            </h1>
+            <p className="eyebrow">{t.introEyebrow}</p>
+            <h1 id="page-title">{t.introTitle}</h1>
           </div>
-          <p className="intro__copy">
-            CodePath AI turns your developer profile into a salary benchmark,
-            skill-gap analysis, technology recommendations and a personalized
-            30/60/90-day career plan.
-          </p>
+          <p className="intro__copy">{t.introCopy}</p>
         </section>
 
         <section
           className="analysis-grid"
           id="analysis"
-          aria-label="Career analysis workspace"
+          aria-label={t.workspaceLabel}
         >
           <form className="profile-card" onSubmit={handleSubmit}>
             <div className="card-heading">
               <div>
-                <p className="step-label">01 · Your profile</p>
-                <h2>Build your career analysis</h2>
+                <p className="step-label">{t.profileStep}</p>
+                <h2>{t.profileTitle}</h2>
               </div>
-              <span className="required-note">Salary is optional</span>
+              <span className="required-note">{t.salaryOptional}</span>
             </div>
 
             <div className="field-grid">
               <label className="field field--full" htmlFor="country">
-                <span>Country</span>
+                <span>{t.country}</span>
                 <input
                   id="country"
                   name="country"
                   type="text"
                   value={formData.country}
                   onChange={handleChange}
-                  placeholder="e.g. Turkey"
+                  placeholder={t.countryPlaceholder}
                   autoComplete="country-name"
                   required
                 />
-                <small>Use the English country name used in the survey.</small>
+                <small>{t.countryHelp}</small>
               </label>
 
               <label className="field field--full" htmlFor="education_level">
-                <span>Education level</span>
+                <span>{t.educationLevel}</span>
                 <span className="select-wrap">
                   <select
                     id="education_level"
@@ -293,17 +545,17 @@ function App() {
                     onChange={handleChange}
                     required
                   >
-                    <option value="Undergraduate">Undergraduate</option>
-                    <option value="Master">Master&apos;s degree</option>
-                    <option value="PhD">PhD</option>
-                    <option value="NoHigherEd">No higher education</option>
-                    <option value="Other">Other</option>
+                    <option value="Undergraduate">{t.undergraduate}</option>
+                    <option value="Master">{t.master}</option>
+                    <option value="PhD">{t.phd}</option>
+                    <option value="NoHigherEd">{t.noHigherEducation}</option>
+                    <option value="Other">{t.other}</option>
                   </select>
                 </span>
               </label>
 
               <label className="field" htmlFor="years_code">
-                <span>Total coding</span>
+                <span>{t.totalCoding}</span>
                 <span className="input-suffix">
                   <input
                     id="years_code"
@@ -315,12 +567,12 @@ function App() {
                     onChange={handleChange}
                     required
                   />
-                  <span>years</span>
+                  <span>{t.years}</span>
                 </span>
               </label>
 
               <label className="field" htmlFor="years_code_pro">
-                <span>Professional</span>
+                <span>{t.professional}</span>
                 <span className="input-suffix">
                   <input
                     id="years_code_pro"
@@ -332,29 +584,31 @@ function App() {
                     onChange={handleChange}
                     required
                   />
-                  <span>years</span>
+                  <span>{t.years}</span>
                 </span>
               </label>
 
-              <label className="field field--full" htmlFor="technologies">
-                <span>Technologies you know</span>
-                <textarea
-                  id="technologies"
-                  name="technologies"
-                  rows="3"
-                  value={formData.technologies}
-                  onChange={handleChange}
-                  placeholder="python, fastapi, react, docker"
-                  aria-describedby="technologies-help"
-                  required
+              <div className="field field--full">
+                <label htmlFor="technologies">{t.technologies}</label>
+                <TechnologyCombobox
+                  options={technologyOptions}
+                  selectedTechnologies={formData.technologies}
+                  onChange={(technologies) =>
+                    setFormData((previousFormData) => ({
+                      ...previousFormData,
+                      technologies,
+                    }))
+                  }
+                  loading={technologyCatalogLoading}
+                  loadError={
+                    technologyCatalogError ? t.technologyCatalogError : ''
+                  }
+                  t={t}
                 />
-                <small id="technologies-help">
-                  Separate each technology with a comma.
-                </small>
-              </label>
+              </div>
 
               <label className="field" htmlFor="current_salary">
-                <span>Current salary</span>
+                <span>{t.currentSalary}</span>
                 <span className="input-prefix">
                   <span>$</span>
                   <input
@@ -364,13 +618,13 @@ function App() {
                     min="0"
                     value={formData.current_salary}
                     onChange={handleChange}
-                    placeholder="Optional"
+                    placeholder={t.optional}
                   />
                 </span>
               </label>
 
               <label className="field" htmlFor="weekly_learning_hours">
-                <span>Weekly learning time</span>
+                <span>{t.weeklyLearningTime}</span>
                 <span className="input-suffix">
                   <input
                     id="weekly_learning_hours"
@@ -382,42 +636,36 @@ function App() {
                     onChange={handleChange}
                     required
                   />
-                  <span>hours</span>
+                  <span>{t.hours}</span>
                 </span>
               </label>
             </div>
 
             <button className="analyze-button" type="submit" disabled={loading}>
-              <span>{loading ? 'Analyzing profile…' : 'Start career analysis'}</span>
+              <span>{loading ? t.analyzing : t.startAnalysis}</span>
               <span className="button-arrow" aria-hidden="true">
                 →
               </span>
             </button>
 
-            <p className="form-footnote">
-              Salary, skill and technology intelligence are live. The AI mentor
-              is the final integration.
-            </p>
+            <p className="form-footnote">{t.formFootnote}</p>
           </form>
 
           <section className="result-card" aria-labelledby="result-title">
             <div className="card-heading result-heading">
               <div>
-                <p className="step-label step-label--light">02 · Career signals</p>
-                <h2 id="result-title">Your career snapshot</h2>
+                <p className="step-label step-label--light">{t.signalsStep}</p>
+                <h2 id="result-title">{t.snapshotTitle}</h2>
               </div>
-              <span className="currency-pill">Personalized report</span>
+              <span className="currency-pill">{t.personalizedReport}</span>
             </div>
 
             <div className="result-stage" aria-live="polite">
               {loading && (
                 <div className="loading-state" role="status">
                   <span className="loading-ring" aria-hidden="true" />
-                  <h3>Building your career snapshot</h3>
-                  <p>
-                    Running the salary model, matching your peer cohort and
-                    ranking complementary technologies…
-                  </p>
+                  <h3>{t.loadingTitle}</h3>
+                  <p>{t.loadingCopy}</p>
                 </div>
               )}
 
@@ -427,7 +675,7 @@ function App() {
                     !
                   </span>
                   <div>
-                    <h3>We couldn&apos;t complete the analysis</h3>
+                    <h3>{t.errorTitle}</h3>
                     <p>{error}</p>
                   </div>
                 </div>
@@ -440,17 +688,14 @@ function App() {
                     <span className="signal-visual__orbit signal-visual__orbit--one" />
                     <span className="signal-visual__orbit signal-visual__orbit--two" />
                   </div>
-                  <p className="empty-state__label">Your career, in context</p>
-                  <h3>Your complete career map will live here.</h3>
-                  <p>
-                    Start with live salary and skill benchmarks. Every new
-                    intelligence layer will join the same report.
-                  </p>
+                  <p className="empty-state__label">{t.emptyLabel}</p>
+                  <h3>{t.emptyTitle}</h3>
+                  <p>{t.emptyCopy}</p>
                   <div className="output-preview" aria-hidden="true">
-                    <span>Salary range</span>
-                    <span>Skill benchmark</span>
-                    <span>Tech recommendations</span>
-                    <span>90-day roadmap</span>
+                    <span>{t.salaryRange}</span>
+                    <span>{t.skillBenchmark}</span>
+                    <span>{t.techRecommendations}</span>
+                    <span>{t.ninetyDayRoadmap}</span>
                   </div>
                 </div>
               )}
@@ -458,35 +703,43 @@ function App() {
               {!loading && !error && result && (
                 <div className="career-result">
                   <div className="analysis-progress">
-                    <span>Analysis coverage</span>
-                    <strong>3 of 4 layers live</strong>
+                    <span>{t.analysisCoverage}</span>
+                    <strong>
+                      {result.mentorStatus === 'completed'
+                        ? t.layersComplete
+                        : t.layersPartial}
+                    </strong>
                   </div>
 
-                  <p className="result-kicker">Market compensation signal</p>
+                  <p className="result-kicker">{t.marketCompensation}</p>
                   <p className="salary-value">
                     {formatCurrency(
                       result.salary.predicted_salary,
                       result.salary.currency,
+                      language,
                     )}
                   </p>
                   <p className="salary-context">
-                    estimated annually for a{' '}
-                    {submittedProfile?.educationLevel.toLowerCase()} profile in{' '}
-                    {submittedProfile?.country}
+                    {t.salaryContext(
+                      t.educationValues[submittedProfile?.educationLevel],
+                      submittedProfile?.country,
+                    )}
                   </p>
 
                   <div className="range-panel">
                     <div className="range-panel__header">
-                      <span>Model prediction range</span>
+                      <span>{t.predictionRange}</span>
                       <strong>
                         {formatCurrency(
                           result.salary.lower_salary,
                           result.salary.currency,
+                          language,
                         )}{' '}
                         –{' '}
                         {formatCurrency(
                           result.salary.upper_salary,
                           result.salary.currency,
+                          language,
                         )}
                       </strong>
                     </div>
@@ -497,9 +750,9 @@ function App() {
                       />
                     </div>
                     <div className="range-labels">
-                      <span>Lower</span>
-                      <span>Prediction</span>
-                      <span>Upper</span>
+                      <span>{t.lower}</span>
+                      <span>{t.prediction}</span>
+                      <span>{t.upper}</span>
                     </div>
                   </div>
 
@@ -509,25 +762,25 @@ function App() {
                   >
                     <div className="skill-benchmark-heading">
                       <div>
-                        <p className="result-kicker">Peer skill benchmark</p>
+                        <p className="result-kicker">{t.peerBenchmark}</p>
                         <h3 id="skill-benchmark-title">
-                          {skillPositionLabels[result.skill.position]}
+                          {t.positions[result.skill.position]}
                         </h3>
                       </div>
-                      <span className="live-pill">Live</span>
+                      <span className="live-pill">{t.live}</span>
                     </div>
 
                     <div className="skill-score-grid">
                       <div>
-                        <span>Your technologies</span>
+                        <span>{t.yourTechnologies}</span>
                         <strong>{result.skill.actual_skills}</strong>
                       </div>
                       <div>
-                        <span>Peer median</span>
+                        <span>{t.peerMedian}</span>
                         <strong>{result.skill.expected_skills}</strong>
                       </div>
                       <div className="skill-gap-score">
-                        <span>Skill gap</span>
+                        <span>{t.skillGap}</span>
                         <strong>{result.skill.skill_gap}</strong>
                       </div>
                     </div>
@@ -547,18 +800,21 @@ function App() {
                         />
                       </div>
                       <div className="skill-range__labels">
-                        <span>Your position: {result.skill.actual_skills}</span>
                         <span>
-                          Typical: {result.skill.lower_benchmark}–
+                          {t.yourPosition}: {result.skill.actual_skills}
+                        </span>
+                        <span>
+                          {t.typical}: {result.skill.lower_benchmark}–
                           {result.skill.upper_benchmark}
                         </span>
                       </div>
                     </div>
 
                     <p className="cohort-context">
-                      Compared with {result.skill.cohort_size.toLocaleString('en-US')}{' '}
-                      employed developers matched by{' '}
-                      {benchmarkLevelLabels[result.skill.benchmark_level]}.
+                      {t.cohortContext(
+                        result.skill.cohort_size.toLocaleString(locale),
+                        t.benchmarkLevels[result.skill.benchmark_level],
+                      )}
                     </p>
                   </section>
 
@@ -568,20 +824,18 @@ function App() {
                   >
                     <div className="recommendation-heading">
                       <div>
-                        <p className="result-kicker">Data-backed next moves</p>
+                        <p className="result-kicker">{t.dataBackedMoves}</p>
                         <h3 id="recommendation-title">
                           {result.skill.skill_gap > 0
-                            ? `Close your ${result.skill.skill_gap}-skill gap`
-                            : 'Extend an already strong toolkit'}
+                            ? t.closeGap(result.skill.skill_gap)
+                            : t.strongToolkit}
                         </h3>
                       </div>
-                      <span className="live-pill">Live</span>
+                      <span className="live-pill">{t.live}</span>
                     </div>
 
                     <p className="recommendation-intro">
-                      Ranked by compatibility with your current stack and the
-                      salary signal observed among comparable developer
-                      profiles.
+                      {t.recommendationIntro}
                     </p>
 
                     <div className="recommendation-list">
@@ -597,12 +851,13 @@ function App() {
                             <h4>{recommendation.technology}</h4>
                             <div className="recommendation-signals">
                               <span>
-                                Stack fit{' '}
+                                {t.stackFit}{' '}
                                 {Math.round(recommendation.similarity_score * 100)}%
                               </span>
                               <span>
-                                Salary signal{' '}
-                                {Math.round(recommendation.salary_score * 100)}th pct
+                                {t.salarySignal}{' '}
+                                {Math.round(recommendation.salary_score * 100)}{' '}
+                                {t.percentile}
                               </span>
                             </div>
                             <div
@@ -622,7 +877,7 @@ function App() {
                             <strong>
                               {Math.round(recommendation.final_score * 100)}
                             </strong>
-                            <span>priority</span>
+                            <span>{t.priority}</span>
                           </div>
                         </article>
                       ))}
@@ -630,48 +885,55 @@ function App() {
 
                     {result.recommendation.ignored_technologies.length > 0 && (
                       <p className="ignored-technologies">
-                        Not scored because they are absent from the survey
-                        taxonomy:{' '}
-                        {result.recommendation.ignored_technologies.join(', ')}.
+                        {t.ignoredTechnologies(
+                          result.recommendation.ignored_technologies.join(', '),
+                        )}
                       </p>
                     )}
                   </section>
 
                   <div className="result-meta-grid">
                     <div>
-                      <span>Learning capacity</span>
-                      <strong>{submittedProfile?.learningHours} h / week</strong>
+                      <span>{t.learningCapacity}</span>
+                      <strong>
+                        {submittedProfile?.learningHours} {t.perWeek}
+                      </strong>
                     </div>
                     <div>
-                      <span>Salary model</span>
+                      <span>{t.salaryModel}</span>
                       <strong>v{result.salary.model_version}</strong>
                     </div>
                     <div>
-                      <span>Benchmark</span>
+                      <span>{t.benchmark}</span>
                       <strong>v{result.skill.benchmark_version}</strong>
                     </div>
                     <div>
-                      <span>Recommender</span>
+                      <span>{t.recommender}</span>
                       <strong>v{result.recommendation.model_version}</strong>
                     </div>
                   </div>
 
                   <div className="module-queue">
-                    <p>Final intelligence layer</p>
+                    <p>{t.finalLayer}</p>
                     <div>
-                      <span>30/60/90-day career plan</span>
-                      <small>AI mentor connection pending</small>
+                      <span>{t.careerPlan}</span>
+                      <small
+                        className={
+                          result.mentorStatus === 'completed'
+                            ? 'mentor-state mentor-state--ready'
+                            : 'mentor-state mentor-state--unavailable'
+                        }
+                      >
+                        {result.mentorStatus === 'completed'
+                          ? t.mentorCompleted
+                          : t.mentorUnavailable}
+                      </small>
                     </div>
                   </div>
 
                   <div className="model-note">
                     <span aria-hidden="true">i</span>
-                    <p>
-                      Salary is a survey-based estimate, not a job offer. The
-                      skill gap compares technology count with a peer-group
-                      median. Recommendations show associations in survey data,
-                      not proof that a technology causes higher pay.
-                    </p>
+                    <p>{t.modelNote}</p>
                   </div>
                 </div>
               )}
@@ -679,112 +941,216 @@ function App() {
           </section>
         </section>
 
+        {result?.mentorReport && (
+          <section className="mentor-report" id="mentor-report">
+            <div className="mentor-report__header">
+              <div>
+                <p className="eyebrow">{t.mentorEyebrow}</p>
+                <h2>{t.mentorTitle}</h2>
+              </div>
+              <div className="mentor-model">
+                <span className="model-badge__dot" aria-hidden="true" />
+                <span>{t.generatedBy}</span>
+                <strong>{result.mentorModel}</strong>
+              </div>
+            </div>
+
+            <div className="mentor-summary">
+              <span>{t.mentorSummary}</span>
+              <p>{result.mentorReport.summary}</p>
+            </div>
+
+            <div className="mentor-insight-grid">
+              <article className="mentor-insight-card mentor-insight-card--strengths">
+                <div className="mentor-insight-card__heading">
+                  <span>+</span>
+                  <h3>{t.strengths}</h3>
+                </div>
+                <ul>
+                  {result.mentorReport.strengths.map((strength) => (
+                    <li key={strength}>{strength}</li>
+                  ))}
+                </ul>
+              </article>
+
+              <article className="mentor-insight-card mentor-insight-card--risks">
+                <div className="mentor-insight-card__heading">
+                  <span>!</span>
+                  <h3>{t.risks}</h3>
+                </div>
+                {result.mentorReport.risks.length > 0 ? (
+                  <ul>
+                    {result.mentorReport.risks.map((risk) => (
+                      <li key={risk}>{risk}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mentor-empty-copy">{t.noRisks}</p>
+                )}
+              </article>
+            </div>
+
+            <div className="mentor-strategy-grid">
+              <article className="learning-stack-card">
+                <p className="result-kicker">{t.learningStack}</p>
+                <h3>{t.recommendedSequence}</h3>
+                <div className="learning-stack-list">
+                  {result.mentorReport.recommended_technologies.length > 0 ? (
+                    result.mentorReport.recommended_technologies.map(
+                      (technology, index) => (
+                        <span key={technology}>
+                          <small>{String(index + 1).padStart(2, '0')}</small>
+                          {technology}
+                        </span>
+                      ),
+                    )
+                  ) : (
+                    <p className="mentor-empty-copy">{t.noSkillGap}</p>
+                  )}
+                </div>
+              </article>
+
+              <article className="salary-strategy-card">
+                <p className="result-kicker">{t.salaryStrategy}</p>
+                <h3>{t.turnEvidenceIntoLeverage}</h3>
+                <ol>
+                  {result.mentorReport.salary_strategy.map((strategy) => (
+                    <li key={strategy}>{strategy}</li>
+                  ))}
+                </ol>
+              </article>
+            </div>
+
+            <div className="roadmap-heading">
+              <div>
+                <p className="eyebrow">{t.actionPlan}</p>
+                <h2>{t.roadmapTitle}</h2>
+              </div>
+              <p>{t.roadmapCopy(submittedProfile?.learningHours)}</p>
+            </div>
+
+            <div className="roadmap-grid">
+              <RoadmapPhaseCard
+                day={t.day30}
+                phase={result.mentorReport.roadmap_30_days}
+                t={t}
+              />
+              <RoadmapPhaseCard
+                day={t.day60}
+                phase={result.mentorReport.roadmap_60_days}
+                t={t}
+              />
+              <RoadmapPhaseCard
+                day={t.day90}
+                phase={result.mentorReport.roadmap_90_days}
+                t={t}
+              />
+            </div>
+          </section>
+        )}
+
+        {result && result.mentorStatus !== 'completed' && (
+          <section className="mentor-unavailable" id="mentor-report">
+            <span aria-hidden="true">!</span>
+            <div>
+              <p className="eyebrow">{t.mentorEyebrow}</p>
+              <h2>{t.mentorUnavailable}</h2>
+              <p>{result.mentorMessage || t.mentorUnavailableCopy}</p>
+            </div>
+          </section>
+        )}
+
         <section className="product-map" id="career-modules">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">The complete product</p>
-              <h2>Four intelligence layers, one career decision system.</h2>
+              <p className="eyebrow">{t.completeProduct}</p>
+              <h2>{t.productTitle}</h2>
             </div>
-            <p>
-              Each layer has a clear job. Machine learning produces the evidence;
-              the AI mentor turns that evidence into an actionable plan.
-            </p>
+            <p>{t.productCopy}</p>
           </div>
 
           <div className="module-grid">
             <article className="module-card module-card--active">
               <div className="module-card__top">
                 <span className="module-number">01</span>
-                <span className="status status--live">Live</span>
+                <span className="status status--live">{t.live}</span>
               </div>
-              <h3>Salary intelligence</h3>
-              <p>
-                Estimates annual compensation and presents uncertainty as a
-                lower-to-upper range instead of one overconfident number.
-              </p>
+              <h3>{t.salaryIntelligence}</h3>
+              <p>{t.salaryModuleCopy}</p>
               <div className="module-outputs">
-                <span>Point estimate</span>
-                <span>Prediction range</span>
+                <span>{t.pointEstimate}</span>
+                <span>{t.predictionRangeOutput}</span>
               </div>
             </article>
 
             <article className="module-card module-card--active module-card--skill">
               <div className="module-card__top">
                 <span className="module-number">02</span>
-                <span className="status status--live">Live</span>
+                <span className="status status--live">{t.live}</span>
               </div>
-              <h3>Skill benchmark</h3>
-              <p>
-                Compares your technology breadth with similar developers and
-                calculates how many complementary skills are missing.
-              </p>
+              <h3>{t.skillBenchmark}</h3>
+              <p>{t.skillModuleCopy}</p>
               <div className="module-outputs">
-                <span>Peer comparison</span>
-                <span>Missing skill count</span>
+                <span>{t.peerComparison}</span>
+                <span>{t.missingSkillCount}</span>
               </div>
             </article>
 
             <article className="module-card module-card--active module-card--recommendation">
               <div className="module-card__top">
                 <span className="module-number">03</span>
-                <span className="status status--live">Live</span>
+                <span className="status status--live">{t.live}</span>
               </div>
-              <h3>Technology recommender</h3>
-              <p>
-                Finds complementary technologies in similar and higher-salary
-                profiles so recommendations come from data, not guesswork.
-              </p>
+              <h3>{t.technologyRecommender}</h3>
+              <p>{t.recommenderModuleCopy}</p>
               <div className="module-outputs">
-                <span>Technology shortlist</span>
-                <span>Learning priority</span>
+                <span>{t.technologyShortlist}</span>
+                <span>{t.learningPriority}</span>
               </div>
             </article>
 
-            <article className="module-card" id="roadmap">
+            <article className="module-card module-card--active module-card--mentor" id="roadmap">
               <div className="module-card__top">
                 <span className="module-number">04</span>
-                <span className="status">Planned</span>
+                <span className="status status--live">{t.live}</span>
               </div>
-              <h3>AI career mentor</h3>
-              <p>
-                Interprets every model output and creates a portfolio project,
-                learning sequence and realistic 30/60/90-day roadmap.
-              </p>
+              <h3>{t.aiCareerMentor}</h3>
+              <p>{t.mentorModuleCopy}</p>
               <div className="module-outputs">
-                <span>Portfolio project</span>
-                <span>30/60/90 plan</span>
+                <span>{t.portfolioProject}</span>
+                <span>{t.planOutput}</span>
               </div>
             </article>
           </div>
         </section>
 
-        <section className="system-flow" aria-label="CodePath AI system flow">
+        <section className="system-flow" aria-label={t.systemFlow}>
           <div className="system-flow__heading">
-            <p className="eyebrow">System flow</p>
-            <h2>Data first. Guidance second.</h2>
+            <p className="eyebrow">{t.systemFlow}</p>
+            <h2>{t.flowTitle}</h2>
           </div>
           <div className="flow-step">
             <span>01</span>
-            <strong>Developer profile</strong>
+            <strong>{t.developerProfile}</strong>
           </div>
           <div className="flow-step">
             <span>02</span>
-            <strong>ML predictions</strong>
+            <strong>{t.mlPredictions}</strong>
           </div>
           <div className="flow-step">
             <span>03</span>
-            <strong>Recommendations</strong>
+            <strong>{t.recommendations}</strong>
           </div>
           <div className="flow-step">
             <span>04</span>
-            <strong>AI mentor report</strong>
+            <strong>{t.mentorReport}</strong>
           </div>
         </section>
       </main>
 
       <footer>
         <span>CodePath AI</span>
-        <span>Machine learning evidence, translated into career action.</span>
+        <span>{t.footerCopy}</span>
       </footer>
     </div>
   )

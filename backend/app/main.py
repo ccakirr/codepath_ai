@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from .api.routes.salary import router as salary_router
 from .api.routes.skill import router as skill_router
 from .api.routes.recommender import router as recommender_router
+from .api.routes.career import router as career_router
 
 
 app = FastAPI(
@@ -23,7 +24,7 @@ app.add_middleware(
 )
 
 app.include_router(
-    salary_router, 
+    salary_router,
     prefix="/api/v1",
 )
 
@@ -36,6 +37,12 @@ app.include_router(
     recommender_router,
     prefix="/api/v1"
 )
+
+app.include_router(
+    career_router,
+    prefix="/api/v1"
+)
+
 
 @app.get("/health")
 def health_check():

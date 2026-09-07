@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
 from ...schemas.recommender import (
+    TechnologyCatalogResponse,
     TechnologyRecommendationRequest,
     TechnologyRecommendationResponse,
 )
 from ...services.recommender_service import (
+    get_supported_technologies,
     recommend_technologies,
 )
 
@@ -13,6 +15,16 @@ router = APIRouter(
     prefix="/recommendations",
     tags=["recommendations"],
 )
+
+
+@router.get(
+    "/catalog",
+    response_model=TechnologyCatalogResponse,
+)
+def get_technology_catalog_endpoint() -> TechnologyCatalogResponse:
+    return TechnologyCatalogResponse(
+        **get_supported_technologies()
+    )
 
 
 @router.post(

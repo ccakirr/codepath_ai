@@ -27,9 +27,34 @@ supported_technologies = recommender_bundle[
 ]
 
 technology_name_lookup = {
-    technology.casefold(): technology
+    technology.strip().casefold(): technology
     for technology in supported_technologies
+    if technology.strip()
 }
+
+technology_catalog_lookup = {}
+
+for technology in supported_technologies:
+    display_name = technology.strip()
+
+    if display_name:
+        technology_catalog_lookup.setdefault(
+            display_name.casefold(),
+            display_name,
+        )
+
+supported_technology_catalog = sorted(
+    technology_catalog_lookup.values(),
+    key=str.casefold,
+)
+
+
+def get_supported_technologies() -> dict:
+    return {
+        "technologies": supported_technology_catalog,
+        "count": len(supported_technology_catalog),
+        "model_version": recommender_bundle["model_version"],
+    }
 
 
 def recommend_technologies(
@@ -59,9 +84,12 @@ def recommend_technologies(
             )
 
     if not recognized_technologies:
-        raise ValueError(
-            "None of the provided technologies are supported."
-        )
+        return {
+            "recommendations": [],
+            "recognized_technologies": [],
+            "ignored_technologies": ignored_technologies,
+            "model_version": recommender_bundle["model_version"]
+        }
 
     similarity_scores = (
         technology_similarity_matrix[

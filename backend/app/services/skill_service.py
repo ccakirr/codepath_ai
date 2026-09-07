@@ -24,6 +24,7 @@ experience_benchmark = skill_benchmark_bundle[
     "experience_benchmark"
 ]
 
+
 def get_experience_band(years_code_pro: int) -> str:
     if years_code_pro <= 1:
         return "0-1"
@@ -35,6 +36,7 @@ def get_experience_band(years_code_pro: int) -> str:
         return "10-14"
     else:
         return "15+"
+
 
 def get_skill_benchmark(
     country: str,
@@ -95,6 +97,7 @@ def get_skill_benchmark(
         ),
         "benchmark_version": skill_benchmark_bundle["version"],
     }
+
 
 def analyze_skill_gap(
     country: str,
