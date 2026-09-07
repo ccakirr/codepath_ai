@@ -1,5 +1,7 @@
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI
+from pathlib import Path
 
 from .api.routes.salary import router as salary_router
 from .api.routes.skill import router as skill_router
@@ -47,3 +49,17 @@ app.include_router(
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+FRONTEND_DIST = (
+    Path(__file__).resolve().parents[2]
+    / "frontend"
+    / "dist"
+)
+
+if FRONTEND_DIST.exists():
+    app.mount(
+        "/",
+        StaticFiles(directory=FRONTEND_DIST, html=True),
+        name="frontend",
+    )

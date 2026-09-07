@@ -11,21 +11,21 @@ SALARY_MODEL_PATH = (
     PROJECT_ROOT
     / "artifacts"
     / "salary"
-    / "salary_model_bundle_v1.joblib"
+    / "salary_model_bundle_v2.joblib"
 )
 
 SKILL_BENCHMARK_PATH = (
     PROJECT_ROOT
     / "artifacts"
     / "skills"
-    / "skill_benchmark_bundle_v1.joblib"
+    / "skill_benchmark_bundle_v2.joblib"
 )
 
 TECHNOLOGY_RECOMMENDER_PATH = (
     PROJECT_ROOT
     / "artifacts"
     / "recommender"
-    / "technology_recommender_bundle_v1.joblib"
+    / "technology_recommender_bundle_v2.joblib"
 )
 
 LLM_MODEL_ID = os.getenv("LLM_MODEL_ID")
