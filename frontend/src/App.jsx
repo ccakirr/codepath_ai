@@ -159,11 +159,6 @@ const TechnologyCombobox = ({
             }}
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              selectedTechnologies.length === 0
-                ? t.technologiesPlaceholder
-                : t.addTechnology
-            }
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={isOpen}
@@ -265,7 +260,7 @@ function App() {
     education_level: 'Undergraduate',
     years_code: 4,
     years_code_pro: 1,
-    technologies: ['Python', 'FastAPI', 'React.js', 'Docker'],
+    technologies: [],
     current_salary: '',
     weekly_learning_hours: 8,
   })
